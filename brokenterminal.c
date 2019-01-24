@@ -1,18 +1,16 @@
 /*------------------------------------------------------------------------------------------------------------------
--- SOURCE FILE: mainwindow.cpp - A windows program that performs TCP/IP lookup functions.
+-- SOURCE FILE: brokenterminal.c - a program that re-programs a "raw mode" terminal
 --
--- PROGRAM:     WinsockApp
+-- PROGRAM:     brokenterminal
 --
 -- FUNCTIONS:
---              void host_to_ip()
---              void ip_to_host()
---              void port_to_service()
---              void service_to_port()
---              void cleanup()
---              bool validate_user_input(QString)
---              void print_to_console(QString)
+--              int main(void)
+--              void input(int *p_translate, int *p_output)
+--              void output(int *p_input, int *p_translate)
+--              void translate(int *p_input, int *p_output)
+--              void translate_helper(char *in, char *out)
 --
--- DATE:        Jan. 16, 2019
+-- DATE:        Jan. 18, 2019
 --
 -- REVISIONS:   None
 --
@@ -21,17 +19,37 @@
 -- PROGRAMMER:  Daniel Shin
 --
 -- NOTES:
---              This program performs four TCP/IP lookup functions using the Winsock2 API:
---                  - take a user specified host name and resolve it into a IP address
---                  - take a user specified IP address and resolve it into host name(s)
---                  - take a user specified service name/protocol and resolve it into its port number
---                  - take a user specified port number/protocol and resolve it into its service name
---               IMPORTANT NOTE: Please add "WS2_32.Lib" to the project source list.
+--              This program re-programs the terminal by putting it into "raw mode" and rewrites the commands:
+--                  - a -> z
+--                  - E -> enter
+--                  - T -> normal termination
+--                  - ctrl + k -> abnormal termination
+--                  - X -> backspace
+--                  - K -> line kill
 ----------------------------------------------------------------------------------------------------------------------*/
 #include "brokenterminal.h"
 
 pid_t PID[2];
 
+/*------------------------------------------------------------------------------------------------------------------
+-- FUNCTION:    main
+--
+-- DATE:        Jan. 18, 2019
+--
+-- DESIGNER:    Daniel Shin
+--
+-- PROGRAMMER:  Daniel Shin
+--
+-- INTERFACE:   int main(void)
+--
+-- RETURNS:     int; 0 for successful termination, 1 for otherwise.
+--
+-- NOTES:
+--              Entry point to the program. Initializes all pipes and processes needed for the program.
+--          	Creates 3 pipes: input -> output, input -> translate, translate -> output.
+--              Input -> output and translate -> output are set to non-blocking mode.
+--              This function also disables and re-enables the "raw mode".
+----------------------------------------------------------------------------------------------------------------------*/
 int main(void)
 {
     int pipes[3][2], i;
@@ -91,21 +109,23 @@ int main(void)
 }
 
 /*------------------------------------------------------------------------------------------------------------------
--- FUNCTION:    host_to_ip
+-- FUNCTION:    input
 --
--- DATE:        Jan. 16, 2019
+-- DATE:        Jan. 18, 2019
 --
 -- DESIGNER:    Daniel Shin
 --
 -- PROGRAMMER:  Daniel Shin
 --
--- INTERFACE:   void host_to_ip()
+-- INTERFACE:   void input(int *p_translate, int *p_output)
+--                  int *p_translate, a pointer to the translate pipe
+--                  int *p_output, a pointer to the output pipe
 --
 -- RETURNS:     void
 --
 -- NOTES:
---              This function is responsible for using the Winsock v2.2 session and searching
---              to see if the IP address exists, given an host name.
+--              This function handles the input of the program. Receives the input from the user and stores
+--              the inputted characters to the buffer to be translated and displayed to the console.
 ----------------------------------------------------------------------------------------------------------------------*/
 void input(int *p_translate, int *p_output)
 {
@@ -151,6 +171,25 @@ void input(int *p_translate, int *p_output)
     }
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+-- FUNCTION:    output
+--
+-- DATE:        Jan. 18, 2019
+--
+-- DESIGNER:    Daniel Shin
+--
+-- PROGRAMMER:  Daniel Shin
+--
+-- INTERFACE:   void output(int *p_input, int *p_translate)
+--                  int *p_input, a pointer to the input pipe
+--                  int *p_translate, a pointer to the translate pipe
+--
+-- RETURNS:     void
+--
+-- NOTES:
+--              This function handles the outputs of the program. Constantly checks the input and translate pipe
+--              for data and displays the data from the pipes.
+----------------------------------------------------------------------------------------------------------------------*/
 void output(int *p_input, int *p_translate)
 {
     char input_buffer, translate_buffer[BUFFER_SIZE];
@@ -171,6 +210,25 @@ void output(int *p_input, int *p_translate)
     }
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+-- FUNCTION:    translate
+--
+-- DATE:        Jan. 18, 2019
+--
+-- DESIGNER:    Daniel Shin
+--
+-- PROGRAMMER:  Daniel Shin
+--
+-- INTERFACE:   void translate(int *p_input, int *p_output)
+--                  int *p_input, a pointer to the input pipe
+--                  int *p_output, a pointer to the output pipe
+--
+-- RETURNS:     void
+--
+-- NOTES:
+--              This function handles the translation of the inputted characters.
+--              Constantly reads the input pipe for data, translates and then clears the buffer.
+----------------------------------------------------------------------------------------------------------------------*/
 void translate(int *p_input, int *p_output)
 {
     char buffer[BUFFER_SIZE], result[BUFFER_SIZE];
@@ -183,6 +241,28 @@ void translate(int *p_input, int *p_output)
     }
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+-- FUNCTION:    translate_helper
+--
+-- DATE:        Jan. 18, 2019
+--
+-- DESIGNER:    Daniel Shin
+--
+-- PROGRAMMER:  Daniel Shin
+--
+-- INTERFACE:   void translate_helper(char *in, char *out)
+--                  int *in, a pointer to the input pipe
+--                  int *out, a pointer to the output pipe
+--
+-- RETURNS:     void
+--
+-- NOTES:
+--              This function handles the translation of the inputted characters:
+--                  if 'a' is found, translates into 'z'
+--                  if 'K' is found, clears the in buffer
+--                  if 'X' is found, deletes the previous character
+--                  otherwise, stores it into the output buffer
+----------------------------------------------------------------------------------------------------------------------*/
 void translate_helper(char *in, char *out)
 {
     int i, j;
@@ -191,14 +271,14 @@ void translate_helper(char *in, char *out)
     {
         switch (in[i])
         {
+        case 'a':
+            out[j++] = 'z';
+            break;
         case 'K':
             j = 0;
             break;
         case 'X':
             --j;
-            break;
-        case 'a':
-            out[j++] = 'z';
             break;
         default:
             out[j] = in[i];
